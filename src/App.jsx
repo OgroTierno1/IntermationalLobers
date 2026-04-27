@@ -47,19 +47,33 @@ const makeDefaultContent = (type, label = 'New item') => {
   switch (type) {
     case 'text':
       return { text: `Write here for ${label}...` };
+
     case 'list':
       return {
         items: [{ id: `i-${Date.now()}`, text: `${label} item`, done: false }],
       };
+
     case 'image':
       return { images: [] };
+
     case 'video-library':
       return { videos: [], currentVideoId: null };
-    case 'travel-blog':
+
+    case 'routes': {
+      const journeyId = `journey-${Date.now()}`;
       return {
-        posts: [],
-        selectedPostId: null,
+        journeys: [
+          {
+            id: journeyId,
+            title: label || 'My Route',
+            stops: [],
+            legs: [],
+          },
+        ],
+        selectedJourneyId: journeyId,
       };
+    }
+
     default:
       return { text: 'New memory...' };
   }
@@ -117,6 +131,67 @@ const INITIAL_DESKTOP_ITEMS = [
       text: 'Welcome to our little retro corner. This can be your soft digital diary for memories, photos, notes, and all the beautiful moments you want to keep forever.',
     },
     protected: true,
+  },
+  {
+    id: 'routes',
+    label: 'Routes.exe',
+    icon: '🛤️',
+    x: 1090,
+    y: 120,
+    windowX: 120,
+    windowY: 70,
+    windowTitle: 'Routes.exe',
+    type: 'routes',
+    content: {
+      journeys: [
+        {
+          id: 'journey-1',
+          title: 'Eindhoven → Amsterdam → Delhi',
+          stops: [
+            {
+              id: 'stop-1',
+              name: 'Eindhoven 🇳🇱',
+              position: [51.4416, 5.4697],
+              photos: [
+                'https://images.unsplash.com/photo-1512632578888-169bbbc64f33?auto=format&fit=crop&w=1200&q=80',
+              ],
+            },
+            {
+              id: 'stop-2',
+              name: 'Amsterdam 🇳🇱',
+              position: [52.3676, 4.9041],
+              photos: [
+                'https://images.unsplash.com/photo-1534351590666-13e3e96b5017?auto=format&fit=crop&w=1200&q=80',
+              ],
+            },
+            {
+              id: 'stop-3',
+              name: 'Delhi 🇮🇳',
+              position: [28.6139, 77.209],
+              photos: [
+                'https://images.unsplash.com/photo-1587474260584-136574528ed5?auto=format&fit=crop&w=1200&q=80',
+              ],
+            },
+          ],
+          legs: [
+            {
+              id: 'leg-1',
+              fromStopId: 'stop-1',
+              toStopId: 'stop-2',
+              transport: 'Train',
+            },
+            {
+              id: 'leg-2',
+              fromStopId: 'stop-2',
+              toStopId: 'stop-3',
+              transport: 'Plane',
+            },
+          ],
+        },
+      ],
+      selectedJourneyId: 'journey-1',
+    },
+    protected: false,
   },
   {
     id: 'travel-blog',
@@ -526,7 +601,31 @@ function DraggableWindow({ item, onClose, children, onUpdatePosition }) {
     </div>
   );
 }
+const isValidPosition = (position) => {
+  return (
+    Array.isArray(position) &&
+    position.length === 2 &&
+    Number.isFinite(position[0]) &&
+    Number.isFinite(position[1])
+  );
+};
 
+const projectToWorldMap = (position) => {
+  const [lat, lng] = position;
+
+  return {
+    x: ((lng + 180) / 360) * 100,
+    y: ((90 - lat) / 180) * 100,
+  };
+};
+
+const getConnectionFromId = (connection) => {
+  return connection.fromStopId ?? connection.fromId ?? connection.from ?? '';
+};
+
+const getConnectionToId = (connection) => {
+  return connection.toStopId ?? connection.toId ?? connection.to ?? '';
+};
 export default function TravelJournalSite() {
   const [countdown, setCountdown] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -584,6 +683,680 @@ export default function TravelJournalSite() {
   spinning: false,
   rotation: 0,
 });
+const transportEmojiMap = {
+  Train: '🚆',
+  Plane: '✈️',
+  Car: '🚗',
+  Bus: '🚌',
+  Ferry: '⛴️',
+  Walk: '🚶',
+};
+
+const transportColorMap = {
+  Train: '#86efac',
+  Plane: '#93c5fd',
+  Car: '#fdba74',
+  Bus: '#fde68a',
+  Ferry: '#67e8f9',
+  Walk: '#f9a8d4',
+};
+
+function getStopById(stops = [], stopId) {
+  return stops.find((stop) => stop.id === stopId) ?? null;
+}
+
+function interpolatePosition(from, to, progress) {
+  return [
+    from[0] + (to[0] - from[0]) * progress,
+    from[1] + (to[1] - from[1]) * progress,
+  ];
+}
+
+function RoutesWindow({ item, updateItemContent, isClient, mapLib }) {
+  const [newJourneyTitle, setNewJourneyTitle] = useState('');
+  const [newStopName, setNewStopName] = useState('');
+  const [newStopLat, setNewStopLat] = useState('');
+  const [newStopLng, setNewStopLng] = useState('');
+  const [newStopPhotos, setNewStopPhotos] = useState('');
+
+  const [newLegFromId, setNewLegFromId] = useState('');
+  const [newLegToId, setNewLegToId] = useState('');
+  const [newLegTransport, setNewLegTransport] = useState('Train');
+
+  const [activeStopId, setActiveStopId] = useState('');
+  const [animationState, setAnimationState] = useState({
+    playing: false,
+    legIndex: 0,
+    progress: 0,
+  });
+
+  const journeys = item.content.journeys ?? [];
+  const selectedJourneyId =
+    item.content.selectedJourneyId ?? journeys[0]?.id ?? null;
+
+  const selectedJourney =
+    journeys.find((journey) => journey.id === selectedJourneyId) ?? journeys[0] ?? null;
+
+  useEffect(() => {
+    if (!selectedJourney) return;
+
+    setActiveStopId(selectedJourney.stops?.[0]?.id ?? '');
+    setAnimationState({
+      playing: false,
+      legIndex: 0,
+      progress: 0,
+    });
+  }, [selectedJourney?.id]);
+
+  useEffect(() => {
+    if (!selectedJourney) return;
+    if (!animationState.playing) return;
+    if (!selectedJourney.legs?.length) return;
+
+    const interval = setInterval(() => {
+      setAnimationState((prev) => {
+        const lastLegIndex = Math.max(selectedJourney.legs.length - 1, 0);
+
+        if (prev.legIndex > lastLegIndex) {
+          return {
+            playing: false,
+            legIndex: lastLegIndex,
+            progress: 1,
+          };
+        }
+
+        let nextProgress = prev.progress + 0.03;
+        let nextLegIndex = prev.legIndex;
+
+        if (nextProgress >= 1) {
+          nextProgress = 0;
+          nextLegIndex += 1;
+
+          if (nextLegIndex >= selectedJourney.legs.length) {
+            return {
+              playing: false,
+              legIndex: lastLegIndex,
+              progress: 1,
+            };
+          }
+        }
+
+        return {
+          playing: true,
+          legIndex: nextLegIndex,
+          progress: nextProgress,
+        };
+      });
+    }, 80);
+
+    return () => clearInterval(interval);
+  }, [animationState.playing, selectedJourney]);
+
+  const patchSelectedJourney = (updater) => {
+    updateItemContent(item.id, (prev) => {
+      const currentJourneyId =
+        prev.selectedJourneyId ?? prev.journeys?.[0]?.id ?? null;
+
+      return {
+        ...prev,
+        journeys: (prev.journeys ?? []).map((journey) =>
+          journey.id === currentJourneyId ? updater(journey) : journey
+        ),
+      };
+    });
+  };
+
+  const addJourney = () => {
+    if (!newJourneyTitle.trim()) return;
+
+    const newJourney = {
+      id: `journey-${Date.now()}`,
+      title: newJourneyTitle.trim(),
+      stops: [],
+      legs: [],
+    };
+
+    updateItemContent(item.id, (prev) => ({
+      ...prev,
+      journeys: [...(prev.journeys ?? []), newJourney],
+      selectedJourneyId: newJourney.id,
+    }));
+
+    setNewJourneyTitle('');
+  };
+
+  const addStop = () => {
+    if (!selectedJourney) return;
+    if (!newStopName.trim() || newStopLat === '' || newStopLng === '') return;
+
+    const parsedLat = Number(newStopLat);
+    const parsedLng = Number(newStopLng);
+
+    if (Number.isNaN(parsedLat) || Number.isNaN(parsedLng)) return;
+
+    const photoList = newStopPhotos
+      .split(',')
+      .map((photo) => photo.trim())
+      .filter(Boolean);
+
+    if (!Number.isFinite(parsedLat) || !Number.isFinite(parsedLng)) {
+      alert('Please enter valid latitude and longitude.');
+      return;
+    }
+    const newStop = {
+      id: `stop-${Date.now()}`,
+      name: newStopName.trim(),
+      position: [parsedLat, parsedLng],
+      photos: photoList,
+    };
+
+    patchSelectedJourney((journey) => ({
+      ...journey,
+      stops: [...(journey.stops ?? []), newStop],
+    }));
+
+    setActiveStopId(newStop.id);
+    setNewStopName('');
+    setNewStopLat('');
+    setNewStopLng('');
+    setNewStopPhotos('');
+  };
+
+  const deleteStop = (stopId) => {
+    if (!selectedJourney) return;
+
+    patchSelectedJourney((journey) => ({
+      ...journey,
+      stops: (journey.stops ?? []).filter((stop) => stop.id !== stopId),
+      legs: (journey.legs ?? []).filter(
+        (leg) => leg.fromStopId !== stopId && leg.toStopId !== stopId
+      ),
+    }));
+
+    if (activeStopId === stopId) {
+      setActiveStopId('');
+    }
+  };
+
+  const addLeg = () => {
+    if (!selectedJourney) return;
+    if (!newLegFromId || !newLegToId) return;
+    if (newLegFromId === newLegToId) return;
+
+    const newLeg = {
+      id: `leg-${Date.now()}`,
+      fromStopId: newLegFromId,
+      toStopId: newLegToId,
+      transport: newLegTransport,
+    };
+
+    patchSelectedJourney((journey) => ({
+      ...journey,
+      legs: [...(journey.legs ?? []), newLeg],
+    }));
+
+    setNewLegFromId('');
+    setNewLegToId('');
+    setNewLegTransport('Train');
+  };
+
+  const deleteLeg = (legId) => {
+    if (!selectedJourney) return;
+
+    patchSelectedJourney((journey) => ({
+      ...journey,
+      legs: (journey.legs ?? []).filter((leg) => leg.id !== legId),
+    }));
+  };
+
+  if (!selectedJourney && !journeys.length) {
+    return (
+      <div className="space-y-4 text-black">
+        <div className="border-4 border-black bg-[#d9ecff] p-4 shadow-[4px_4px_0_0_#000]">
+          <h3 className="text-lg font-bold">Routes</h3>
+          <p className="mt-2 text-sm">
+            Create your first journey and then add stops, connections, and photos.
+          </p>
+        </div>
+
+        <div className="flex gap-3">
+          <input
+            value={newJourneyTitle}
+            onChange={(e) => setNewJourneyTitle(e.target.value)}
+            placeholder="Journey title"
+            className="flex-1 border-2 border-black px-3 py-2 outline-none"
+          />
+          <button
+            onClick={addJourney}
+            className="border-2 border-black bg-[#d9d9d9] px-4 py-2 shadow-[2px_2px_0_0_#000]"
+          >
+            Add Journey
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isClient || !mapLib) {
+    return (
+      <div className="border-4 border-black bg-[#d9ecff] p-6 text-black shadow-[4px_4px_0_0_#000]">
+        Loading routes map...
+      </div>
+    );
+  }
+
+  const {
+    MapContainer,
+    TileLayer,
+    Marker,
+    Popup,
+    Polyline,
+    ZoomControl,
+    CircleMarker,
+  } = mapLib;
+
+  const stops = selectedJourney?.stops ?? [];
+  const legs = selectedJourney?.legs ?? [];
+  const activeStop = getStopById(stops, activeStopId) ?? stops[0] ?? null;
+
+  const currentLeg = legs[animationState.legIndex] ?? null;
+
+  let movingPosition = null;
+  if (currentLeg) {
+    const fromStop = getStopById(stops, currentLeg.fromStopId);
+    const toStop = getStopById(stops, currentLeg.toStopId);
+
+    if (fromStop && toStop) {
+      movingPosition = interpolatePosition(
+        fromStop.position,
+        toStop.position,
+        animationState.progress
+      );
+    }
+  }
+
+  const allCoordinates = stops.map((stop) => stop.position);
+  const mapCenter = allCoordinates[0] ?? [30, 10];
+
+  return (
+    <div className="space-y-6 text-black">
+      <div className="border-4 border-black bg-[#d9ecff] p-4 shadow-[4px_4px_0_0_#000]">
+        <h3 className="text-lg font-bold">🗺️ Routes & Journeys</h3>
+        <p className="mt-2 text-sm">
+          Add your route, animate the trip on the world map, and attach photos to each stop.
+        </p>
+      </div>
+
+      <div className="space-y-3">
+        <div className="flex gap-3">
+          <input
+            value={newJourneyTitle}
+            onChange={(e) => setNewJourneyTitle(e.target.value)}
+            placeholder="New journey title"
+            className="flex-1 border-2 border-black px-3 py-2 outline-none"
+          />
+          <button
+            onClick={addJourney}
+            className="border-2 border-black bg-[#d9d9d9] px-4 py-2 shadow-[2px_2px_0_0_#000]"
+          >
+            Add Journey
+          </button>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {journeys.map((journey) => (
+            <button
+              key={journey.id}
+              onClick={() =>
+                updateItemContent(item.id, (prev) => ({
+                  ...prev,
+                  selectedJourneyId: journey.id,
+                }))
+              }
+              className={`border-2 border-black px-3 py-2 text-sm shadow-[2px_2px_0_0_#000] ${
+                journey.id === selectedJourneyId ? 'bg-[#fff6b3]' : 'bg-white'
+              }`}
+            >
+              {journey.title}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <div className="border-4 border-black bg-white p-4 shadow-[4px_4px_0_0_#000]">
+          <h4 className="font-bold">Add stop</h4>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <input
+              value={newStopName}
+              onChange={(e) => setNewStopName(e.target.value)}
+              placeholder="Stop name"
+              className="border-2 border-black px-3 py-2 outline-none"
+            />
+            <input
+              value={newStopLat}
+              onChange={(e) => setNewStopLat(e.target.value)}
+              placeholder="Latitude"
+              className="border-2 border-black px-3 py-2 outline-none"
+            />
+            <input
+              value={newStopLng}
+              onChange={(e) => setNewStopLng(e.target.value)}
+              placeholder="Longitude"
+              className="border-2 border-black px-3 py-2 outline-none"
+            />
+            <input
+              value={newStopPhotos}
+              onChange={(e) => setNewStopPhotos(e.target.value)}
+              placeholder="Photo URLs separated by commas"
+              className="border-2 border-black px-3 py-2 outline-none"
+            />
+          </div>
+
+          <button
+            onClick={addStop}
+            className="mt-4 border-2 border-black bg-[#d9d9d9] px-4 py-2 shadow-[2px_2px_0_0_#000]"
+          >
+            Add Stop
+          </button>
+        </div>
+
+        <div className="border-4 border-black bg-white p-4 shadow-[4px_4px_0_0_#000]">
+          <h4 className="font-bold">Add connection</h4>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <select
+              value={newLegFromId}
+              onChange={(e) => setNewLegFromId(e.target.value)}
+              className="border-2 border-black px-3 py-2 outline-none"
+            >
+              <option value="">From</option>
+              {stops.map((stop) => (
+                <option key={stop.id} value={stop.id}>
+                  {stop.name}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={newLegToId}
+              onChange={(e) => setNewLegToId(e.target.value)}
+              className="border-2 border-black px-3 py-2 outline-none"
+            >
+              <option value="">To</option>
+              {stops.map((stop) => (
+                <option key={stop.id} value={stop.id}>
+                  {stop.name}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={newLegTransport}
+              onChange={(e) => setNewLegTransport(e.target.value)}
+              className="border-2 border-black px-3 py-2 outline-none"
+            >
+              <option>Train</option>
+              <option>Plane</option>
+              <option>Car</option>
+              <option>Bus</option>
+              <option>Ferry</option>
+              <option>Walk</option>
+            </select>
+          </div>
+
+          <button
+            onClick={addLeg}
+            className="mt-4 border-2 border-black bg-[#d9d9d9] px-4 py-2 shadow-[2px_2px_0_0_#000]"
+          >
+            Add Connection
+          </button>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-3">
+        <button
+          onClick={() =>
+            setAnimationState({
+              playing: true,
+              legIndex: 0,
+              progress: 0,
+            })
+          }
+          disabled={!legs.length}
+          className="border-2 border-black bg-[#c7f9cc] px-4 py-2 shadow-[2px_2px_0_0_#000] disabled:opacity-50"
+        >
+          ▶ Play Animation
+        </button>
+
+        <button
+          onClick={() =>
+            setAnimationState({
+              playing: false,
+              legIndex: 0,
+              progress: 0,
+            })
+          }
+          className="border-2 border-black bg-[#fff6b3] px-4 py-2 shadow-[2px_2px_0_0_#000]"
+        >
+          Reset
+        </button>
+      </div>
+
+      <div className="relative h-[430px] overflow-hidden border-4 border-black bg-[#d9ecff] shadow-[6px_6px_0_0_#000]">
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(0,0,0,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(0,0,0,0.06)_1px,transparent_1px)] bg-[size:32px_32px]" />
+
+        <div className="absolute left-[10%] top-[30%] h-20 w-28 rounded-full bg-[#b7e4c7] opacity-70" />
+        <div className="absolute left-[22%] top-[55%] h-24 w-20 rounded-full bg-[#b7e4c7] opacity-70" />
+        <div className="absolute left-[47%] top-[26%] h-24 w-28 rounded-full bg-[#b7e4c7] opacity-70" />
+        <div className="absolute left-[58%] top-[38%] h-28 w-36 rounded-full bg-[#b7e4c7] opacity-70" />
+        <div className="absolute left-[78%] top-[62%] h-16 w-24 rounded-full bg-[#b7e4c7] opacity-70" />
+
+        <svg
+          className="absolute inset-0 h-full w-full"
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+        >
+          {(connections ?? []).map((connection) => {
+            const fromId = getConnectionFromId(connection);
+            const toId = getConnectionToId(connection);
+
+            const fromStop = stops.find((stop) => stop.id === fromId);
+            const toStop = stops.find((stop) => stop.id === toId);
+
+            if (
+              !fromStop ||
+              !toStop ||
+              !isValidPosition(fromStop.position) ||
+              !isValidPosition(toStop.position)
+            ) {
+              return null;
+            }
+
+            const fromPoint = projectToWorldMap(fromStop.position);
+            const toPoint = projectToWorldMap(toStop.position);
+
+            return (
+              <line
+                key={connection.id}
+                x1={fromPoint.x}
+                y1={fromPoint.y}
+                x2={toPoint.x}
+                y2={toPoint.y}
+                stroke="#0f4c5c"
+                strokeWidth="0.8"
+                strokeDasharray="2 2"
+              />
+            );
+          })}
+        </svg>
+
+        {(stops ?? [])
+          .filter((stop) => isValidPosition(stop.position))
+          .map((stop) => {
+            const point = projectToWorldMap(stop.position);
+
+            return (
+              <div
+                key={stop.id}
+                className="group absolute z-20 -translate-x-1/2 -translate-y-1/2"
+                style={{
+                  left: `${point.x}%`,
+                  top: `${point.y}%`,
+                }}
+              >
+                <div className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-black bg-[#fff6b3] text-sm shadow-[2px_2px_0_0_#000]">
+                  📍
+                </div>
+
+                <div className="absolute left-8 top-0 hidden w-64 border-4 border-black bg-white p-3 text-black shadow-[4px_4px_0_0_#000] group-hover:block">
+                  <p className="font-bold">{stop.name}</p>
+
+                  {!!stop.photos?.length && (
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      {stop.photos.slice(0, 4).map((photoUrl, index) => (
+                        <img
+                          key={`${stop.id}-photo-${index}`}
+                          src={photoUrl}
+                          alt={stop.name}
+                          className="h-20 w-full border-2 border-black object-cover"
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+
+        {isValidPosition(movingPosition) && (
+          <div
+            className="absolute z-30 flex h-10 w-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-4 border-black bg-[#f9c2e3] text-xl shadow-[4px_4px_0_0_#000] transition-all duration-150"
+            style={{
+              left: `${projectToWorldMap(movingPosition).x}%`,
+              top: `${projectToWorldMap(movingPosition).y}%`,
+            }}
+          >
+            🚆
+          </div>
+        )}
+
+        <div className="absolute bottom-3 left-3 border-2 border-black bg-white px-3 py-2 text-xs shadow-[2px_2px_0_0_#000]">
+          Hover over a pin to see photos
+        </div>
+      </div>
+
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <div className="border-4 border-black bg-white p-4 shadow-[4px_4px_0_0_#000]">
+          <h4 className="font-bold">Stops</h4>
+
+          <div className="mt-4 space-y-3">
+            {stops.length === 0 && <p className="text-sm">No stops yet.</p>}
+
+            {stops.map((stop) => (
+              <div
+                key={stop.id}
+                className={`border-2 border-black p-3 ${
+                  activeStopId === stop.id ? 'bg-[#d9ecff]' : 'bg-[#f6f6f6]'
+                }`}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <button
+                    onClick={() => setActiveStopId(stop.id)}
+                    className="text-left"
+                  >
+                    <p className="font-bold">{stop.name}</p>
+                    <p className="text-xs">
+                      {stop.position[0]}, {stop.position[1]}
+                    </p>
+                  </button>
+
+                  <button
+                    onClick={() => deleteStop(stop.id)}
+                    className="border-2 border-black bg-[#ffb3b3] px-3 py-1 text-sm shadow-[2px_2px_0_0_#000]"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="border-4 border-black bg-white p-4 shadow-[4px_4px_0_0_#000]">
+          <h4 className="font-bold">Connections</h4>
+
+          <div className="mt-4 space-y-3">
+            {legs.length === 0 && <p className="text-sm">No connections yet.</p>}
+
+            {legs.map((leg, index) => {
+              const fromStop = getStopById(stops, leg.fromStopId);
+              const toStop = getStopById(stops, leg.toStopId);
+
+              if (!fromStop || !toStop) return null;
+
+              return (
+                <div
+                  key={leg.id}
+                  className={`border-2 border-black p-3 ${
+                    index === animationState.legIndex ? 'bg-[#fff6b3]' : 'bg-[#f6f6f6]'
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="font-bold">
+                        {fromStop.name} → {toStop.name}
+                      </p>
+                      <p className="text-sm">
+                        {transportEmojiMap[leg.transport] ?? '🚍'} {leg.transport}
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={() => deleteLeg(leg.id)}
+                      className="border-2 border-black bg-[#ffb3b3] px-3 py-1 text-sm shadow-[2px_2px_0_0_#000]"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      <div className="border-4 border-black bg-white p-4 shadow-[4px_4px_0_0_#000]">
+        <h4 className="font-bold">Photos at this stop</h4>
+
+        {activeStop ? (
+          <div className="mt-4">
+            <p className="mb-4 text-sm font-bold">{activeStop.name}</p>
+
+            {activeStop.photos?.length ? (
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {activeStop.photos.map((photoUrl, index) => (
+                  <img
+                    key={`${activeStop.id}-${index}`}
+                    src={photoUrl}
+                    alt={`${activeStop.name} ${index + 1}`}
+                    className="h-48 w-full border-2 border-black object-cover"
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm">No photos yet for this stop.</p>
+            )}
+          </div>
+        ) : (
+          <p className="mt-4 text-sm">Select a stop to see its photos.</p>
+        )}
+      </div>
+    </div>
+  );
+}
 
 const iconOptions = [
   '📁',
@@ -603,10 +1376,10 @@ const iconOptions = [
   '📅',
   '📖',
   '🔒',
-  '📰',
-  '🎲',
+  '🛤️',
+  '🚆',
 ];
-const typeOptions = ['text', 'list', 'image', 'video-library', 'travel-blog'];
+const typeOptions = ['text', 'list', 'image', 'video-library', 'travel-blog','routes'];
 
   // Start with static data. Saved data is loaded later in an effect to avoid SSR/localStorage errors.
   const [desktopItems, setDesktopItems] = useState(INITIAL_DESKTOP_ITEMS);
@@ -834,7 +1607,16 @@ const typeOptions = ['text', 'list', 'image', 'video-library', 'travel-blog'];
         </div>
       );
     }
-
+    if (item.type === 'routes') {
+      return (
+        <RoutesWindow
+          item={item}
+          updateItemContent={updateItemContent}
+          isClient={isClient}
+          mapLib={mapLib}
+        />
+      );
+    }
     if (item.type === 'travel-blog') {
       const selectedPost =
         item.content.posts.find((post) => post.id === item.content.selectedPostId) ??
@@ -1920,40 +2702,6 @@ const typeOptions = ['text', 'list', 'image', 'video-library', 'travel-blog'];
           >
             Add Place
           </button>
-
-          <div className="overflow-hidden border-4 border-black shadow-[6px_6px_0_0_#000]">
-            <MapContainer
-              center={[32, 15]}
-              zoom={2}
-              scrollWheelZoom
-              zoomControl={false}
-              className="h-[420px] w-full"
-            >
-              <ZoomControl position="topright" />
-              <TileLayer
-                attribution="&copy; OpenStreetMap contributors"
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              />
-
-              {visited.map((place) => (
-                <Marker key={place.id} position={place.position} icon={greenIcon}>
-                  <Popup>{place.name} · Visited</Popup>
-                </Marker>
-              ))}
-
-              {dream.map((place) => (
-                <Marker key={place.id} position={place.position} icon={yellowIcon}>
-                  <Popup>{place.name} · Dream place</Popup>
-                </Marker>
-              ))}
-
-              {next && (
-                <Marker position={next.position} icon={pinkIcon}>
-                  <Popup>{next.name} · Next destination</Popup>
-                </Marker>
-              )}
-            </MapContainer>
-          </div>
 
           <div className="grid gap-4 md:grid-cols-3">
             <div className="border-4 border-black bg-[#c7f9cc] p-4 shadow-[4px_4px_0_0_#000]">
