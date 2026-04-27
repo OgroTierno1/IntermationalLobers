@@ -48,16 +48,22 @@ const makeDefaultContent = (type, label = 'New item') => {
     case 'text':
       return { text: `Write here for ${label}...` };
     case 'list':
-      return { items: [{ id: createId('item'), text: `${label} item`, done: false }] };
+      return {
+        items: [{ id: `i-${Date.now()}`, text: `${label} item`, done: false }],
+      };
     case 'image':
       return { images: [] };
     case 'video-library':
       return { videos: [], currentVideoId: null };
+    case 'travel-blog':
+      return {
+        posts: [],
+        selectedPostId: null,
+      };
     default:
       return { text: 'New memory...' };
   }
 };
-
 const toEmbedUrl = (value) => {
   const input = value.trim();
 
@@ -111,6 +117,37 @@ const INITIAL_DESKTOP_ITEMS = [
       text: 'Welcome to our little retro corner. This can be your soft digital diary for memories, photos, notes, and all the beautiful moments you want to keep forever.',
     },
     protected: true,
+  },
+  {
+    id: 'travel-blog',
+    label: 'Travel Blog',
+    icon: '📰',
+    x: 1090,
+    y: 120,
+    windowX: 180,
+    windowY: 90,
+    windowTitle: 'Travel Blog',
+    type: 'travel-blog',
+    content: {
+      posts: [
+        {
+          id: 'blog-1',
+          title: 'Italy 2026',
+          route: 'Florence → Pisa → La Spezia → Portovenere',
+          hotels: 'Hotel in Florence, apartment in La Spezia',
+          transport: 'Flight + train + bus',
+          learned: 'Traveling light makes everything easier.',
+          funny: 'We almost took the wrong train platform.',
+          photos: [
+            'https://images.unsplash.com/photo-1523906834658-6e24ef2386f9?auto=format&fit=crop&w=1200&q=80',
+          ],
+          videos: ['https://www.youtube.com/embed/dQw4w9WgXcQ'],
+          createdAt: new Date().toLocaleDateString('en-GB'),
+        },
+      ],
+      selectedPostId: 'blog-1',
+    },
+    protected: false,
   },
   {
     id: 'trips',
@@ -527,6 +564,17 @@ export default function TravelJournalSite() {
   const [secretPasswordInput, setSecretPasswordInput] = useState('');
   const [secretNote, setSecretNote] = useState('');
 
+  const [blogTitle, setBlogTitle] = useState('');
+  const [blogRoute, setBlogRoute] = useState('');
+  const [blogHotels, setBlogHotels] = useState('');
+  const [blogTransport, setBlogTransport] = useState('');
+  const [blogLearned, setBlogLearned] = useState('');
+  const [blogFunny, setBlogFunny] = useState('');
+  const [blogPhotoUrl, setBlogPhotoUrl] = useState('');
+  const [blogVideoUrl, setBlogVideoUrl] = useState('');
+  const [blogDraftPhotos, setBlogDraftPhotos] = useState([]);
+  const [blogDraftVideos, setBlogDraftVideos] = useState([]);
+
   const [mapPlaceName, setMapPlaceName] = useState('');
   const [mapLat, setMapLat] = useState('');
   const [mapLng, setMapLng] = useState('');
@@ -558,7 +606,7 @@ const iconOptions = [
   '📰',
   '🎲',
 ];
-const typeOptions = ['text', 'list', 'image', 'video-library'];
+const typeOptions = ['text', 'list', 'image', 'video-library', 'travel-blog'];
 
   // Start with static data. Saved data is loaded later in an effect to avoid SSR/localStorage errors.
   const [desktopItems, setDesktopItems] = useState(INITIAL_DESKTOP_ITEMS);
@@ -782,6 +830,330 @@ const typeOptions = ['text', 'list', 'image', 'video-library'];
           />
           <div className="border-2 border-black bg-[#fff6b3] p-3 text-sm shadow-[2px_2px_0_0_#000]">
             Saved automatically.
+          </div>
+        </div>
+      );
+    }
+
+    if (item.type === 'travel-blog') {
+      const selectedPost =
+        item.content.posts.find((post) => post.id === item.content.selectedPostId) ??
+        item.content.posts[0] ??
+        null;
+
+      return (
+        <div className="space-y-6 text-black">
+          <div className="border-4 border-black bg-[#d9ecff] p-4 shadow-[4px_4px_0_0_#000]">
+            <h3 className="text-lg font-bold">📰 Travel Blog</h3>
+            <p className="mt-2 text-sm">
+              Save your completed trips with route, hotels, transport, lessons learned,
+              funny moments, photos, and videos.
+            </p>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <input
+              value={blogTitle}
+              onChange={(e) => setBlogTitle(e.target.value)}
+              placeholder="Trip title"
+              className="border-2 border-black px-3 py-2 outline-none"
+            />
+
+            <input
+              value={blogTransport}
+              onChange={(e) => setBlogTransport(e.target.value)}
+              placeholder="Transport"
+              className="border-2 border-black px-3 py-2 outline-none"
+            />
+          </div>
+
+          <textarea
+            value={blogRoute}
+            onChange={(e) => setBlogRoute(e.target.value)}
+            placeholder="Route / itinerary"
+            className="min-h-[90px] w-full border-2 border-black p-3 outline-none"
+          />
+
+          <textarea
+            value={blogHotels}
+            onChange={(e) => setBlogHotels(e.target.value)}
+            placeholder="Hotels you stayed at"
+            className="min-h-[90px] w-full border-2 border-black p-3 outline-none"
+          />
+
+          <textarea
+            value={blogLearned}
+            onChange={(e) => setBlogLearned(e.target.value)}
+            placeholder="What we learned"
+            className="min-h-[90px] w-full border-2 border-black p-3 outline-none"
+          />
+
+          <textarea
+            value={blogFunny}
+            onChange={(e) => setBlogFunny(e.target.value)}
+            placeholder="Funny moments"
+            className="min-h-[90px] w-full border-2 border-black p-3 outline-none"
+          />
+
+          <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+            <input
+              value={blogPhotoUrl}
+              onChange={(e) => setBlogPhotoUrl(e.target.value)}
+              placeholder="Photo URL"
+              className="border-2 border-black px-3 py-2 outline-none"
+            />
+            <button
+              onClick={() => {
+                if (!blogPhotoUrl.trim()) return;
+                setBlogDraftPhotos((prev) => [...prev, blogPhotoUrl]);
+                setBlogPhotoUrl('');
+              }}
+              className="border-2 border-black bg-[#d9d9d9] px-4 py-2 shadow-[2px_2px_0_0_#000]"
+            >
+              Add Photo
+            </button>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+            <input
+              value={blogVideoUrl}
+              onChange={(e) => setBlogVideoUrl(e.target.value)}
+              placeholder="YouTube link"
+              className="border-2 border-black px-3 py-2 outline-none"
+            />
+            <button
+              onClick={() => {
+                const embedUrl = toEmbedUrl(blogVideoUrl);
+                if (!embedUrl) return;
+                setBlogDraftVideos((prev) => [...prev, embedUrl]);
+                setBlogVideoUrl('');
+              }}
+              className="border-2 border-black bg-[#d9d9d9] px-4 py-2 shadow-[2px_2px_0_0_#000]"
+            >
+              Add Video
+            </button>
+          </div>
+
+          {(blogDraftPhotos.length > 0 || blogDraftVideos.length > 0) && (
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="border-4 border-black bg-white p-4 shadow-[4px_4px_0_0_#000]">
+                <h4 className="font-bold">Photos to save</h4>
+                <div className="mt-3 space-y-2">
+                  {blogDraftPhotos.map((photo, index) => (
+                    <div
+                      key={`draft-photo-${index}`}
+                      className="flex items-center justify-between gap-3 border-2 border-black bg-[#f6f6f6] px-3 py-2 text-sm"
+                    >
+                      <span className="truncate">{photo}</span>
+                      <button
+                        onClick={() =>
+                          setBlogDraftPhotos((prev) =>
+                            prev.filter((_, photoIndex) => photoIndex !== index)
+                          )
+                        }
+                        className="border-2 border-black bg-[#ffb3b3] px-2 py-1 text-xs"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="border-4 border-black bg-white p-4 shadow-[4px_4px_0_0_#000]">
+                <h4 className="font-bold">Videos to save</h4>
+                <div className="mt-3 space-y-2">
+                  {blogDraftVideos.map((video, index) => (
+                    <div
+                      key={`draft-video-${index}`}
+                      className="flex items-center justify-between gap-3 border-2 border-black bg-[#f6f6f6] px-3 py-2 text-sm"
+                    >
+                      <span className="truncate">{video}</span>
+                      <button
+                        onClick={() =>
+                          setBlogDraftVideos((prev) =>
+                            prev.filter((_, videoIndex) => videoIndex !== index)
+                          )
+                        }
+                        className="border-2 border-black bg-[#ffb3b3] px-2 py-1 text-xs"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <button
+            onClick={() => {
+              if (!blogTitle.trim()) return;
+
+              const newId = Date.now().toString();
+
+              updateItemContent(item.id, (prev) => ({
+                ...prev,
+                posts: [
+                  {
+                    id: newId,
+                    title: blogTitle,
+                    route: blogRoute,
+                    hotels: blogHotels,
+                    transport: blogTransport,
+                    learned: blogLearned,
+                    funny: blogFunny,
+                    photos: blogDraftPhotos,
+                    videos: blogDraftVideos,
+                    createdAt: new Date().toLocaleDateString('en-GB'),
+                  },
+                  ...prev.posts,
+                ],
+                selectedPostId: newId,
+              }));
+
+              setBlogTitle('');
+              setBlogRoute('');
+              setBlogHotels('');
+              setBlogTransport('');
+              setBlogLearned('');
+              setBlogFunny('');
+              setBlogPhotoUrl('');
+              setBlogVideoUrl('');
+              setBlogDraftPhotos([]);
+              setBlogDraftVideos([]);
+            }}
+            className="border-2 border-black bg-[#d9d9d9] px-4 py-2 shadow-[2px_2px_0_0_#000]"
+          >
+            Save Trip Blog
+          </button>
+
+          <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
+            <div className="border-4 border-black bg-white p-4 shadow-[4px_4px_0_0_#000]">
+              <h4 className="font-bold">Saved trips</h4>
+
+              <div className="mt-4 space-y-3">
+                {item.content.posts.length === 0 && (
+                  <p className="text-sm">No travel blogs yet.</p>
+                )}
+
+                {item.content.posts.map((post) => (
+                  <div
+                    key={post.id}
+                    className="border-2 border-black bg-[#f6f6f6] p-3 shadow-[2px_2px_0_0_#000]"
+                  >
+                    <p className="font-bold">{post.title}</p>
+                    <p className="mt-1 text-xs uppercase">Saved on {post.createdAt}</p>
+
+                    <div className="mt-3 flex gap-2">
+                      <button
+                        onClick={() =>
+                          updateItemContent(item.id, (prev) => ({
+                            ...prev,
+                            selectedPostId: post.id,
+                          }))
+                        }
+                        className="border-2 border-black bg-[#d9d9d9] px-3 py-1 text-sm"
+                      >
+                        Open
+                      </button>
+
+                      <button
+                        onClick={() =>
+                          updateItemContent(item.id, (prev) => {
+                            const filteredPosts = prev.posts.filter((row) => row.id !== post.id);
+                            return {
+                              ...prev,
+                              posts: filteredPosts,
+                              selectedPostId: filteredPosts[0]?.id ?? null,
+                            };
+                          })
+                        }
+                        className="border-2 border-black bg-[#ffb3b3] px-3 py-1 text-sm"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="border-4 border-black bg-white p-5 shadow-[4px_4px_0_0_#000]">
+              {!selectedPost ? (
+                <p className="text-sm">Select a saved trip to view it here.</p>
+              ) : (
+                <div className="space-y-5">
+                  <div>
+                    <h3 className="text-2xl font-bold">{selectedPost.title}</h3>
+                    <p className="mt-1 text-xs uppercase">Saved on {selectedPost.createdAt}</p>
+                  </div>
+
+                  <div>
+                    <h4 className="font-bold">Route / itinerary</h4>
+                    <p className="mt-2 whitespace-pre-wrap text-sm">{selectedPost.route || '—'}</p>
+                  </div>
+
+                  <div>
+                    <h4 className="font-bold">Hotels</h4>
+                    <p className="mt-2 whitespace-pre-wrap text-sm">{selectedPost.hotels || '—'}</p>
+                  </div>
+
+                  <div>
+                    <h4 className="font-bold">Transport</h4>
+                    <p className="mt-2 whitespace-pre-wrap text-sm">{selectedPost.transport || '—'}</p>
+                  </div>
+
+                  <div>
+                    <h4 className="font-bold">What we learned</h4>
+                    <p className="mt-2 whitespace-pre-wrap text-sm">{selectedPost.learned || '—'}</p>
+                  </div>
+
+                  <div>
+                    <h4 className="font-bold">Funny moments</h4>
+                    <p className="mt-2 whitespace-pre-wrap text-sm">{selectedPost.funny || '—'}</p>
+                  </div>
+
+                  {selectedPost.photos?.length > 0 && (
+                    <div>
+                      <h4 className="font-bold">Photos</h4>
+                      <div className="mt-3 grid gap-4 md:grid-cols-2">
+                        {selectedPost.photos.map((photo, index) => (
+                          <img
+                            key={`${selectedPost.id}-photo-${index}`}
+                            src={photo}
+                            alt={`${selectedPost.title} ${index + 1}`}
+                            className="h-52 w-full border-2 border-black object-cover"
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedPost.videos?.length > 0 && (
+                    <div>
+                      <h4 className="font-bold">Videos</h4>
+                      <div className="mt-3 space-y-4">
+                        {selectedPost.videos.map((video, index) => (
+                          <div
+                            key={`${selectedPost.id}-video-${index}`}
+                            className="overflow-hidden border-4 border-black shadow-[4px_4px_0_0_#000]"
+                          >
+                            <iframe
+                              className="aspect-video w-full"
+                              src={video}
+                              title={`${selectedPost.title} video ${index + 1}`}
+                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                              allowFullScreen
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       );
