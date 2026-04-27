@@ -1078,11 +1078,45 @@ export default function TravelJournalSite() {
 
           {featured && (
             <div className="border-4 border-black bg-white p-4 shadow-[4px_4px_0_0_#000]">
-              <h3 className="text-lg font-bold">{featured.title}</h3>
-              <p className="mt-1 text-xs uppercase">{featured.date}</p>
-              <p className="mt-4 whitespace-pre-wrap text-sm leading-7">{featured.body}</p>
-            </div>
-          )}
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-bold">{featured.title}</h3>
+                  <p className="mt-1 text-xs uppercase">{featured.date}</p>
+                </div>
+
+                <button
+                  onClick={() =>
+                    updateItemContent(item.id, (prev) => {
+                      const updatedLetters = prev.letters.filter(
+                        (letter) => letter.id !== featured.id
+                      );
+
+                      return {
+                        ...prev,
+                        letters: updatedLetters,
+                        featuredLetterId: updatedLetters[0]?.id ?? null,
+                      };
+                    })
+                  }
+                  className="border-2 border-black bg-[#ffb3b3] px-3 py-1 text-sm shadow-[2px_2px_0_0_#000] hover:bg-[#ff8f8f]"
+                >
+                  Delete
+                </button>
+              </div>
+
+    <p className="mt-4 whitespace-pre-wrap text-sm leading-7">{featured.body}</p>
+  </div>
+)}
+
+
+
+
+
+
+
+
+
+
         </div>
       );
     }
