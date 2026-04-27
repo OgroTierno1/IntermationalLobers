@@ -414,14 +414,16 @@ function DraggableWindow({ item, onClose, children, onUpdatePosition }) {
           <span>{item.icon}</span>
           <h2 className="text-sm font-bold">{item.windowTitle}</h2>
         </div>
-
+      
         <button
           onMouseDown={(e) => e.stopPropagation()}
           onClick={onClose}
-          className="border-2 border-black bg-[#d9d9d9] px-2 py-0.5 text-xs text-black shadow-[2px_2px_0_0_#000]"
+          aria-label="Close window"
+          className="flex h-9 w-9 items-center justify-center border-2 border-black bg-[#d9d9d9] text-base font-bold text-black shadow-[2px_2px_0_0_#000] hover:bg-[#ffb3b3]"
         >
           X
-        </button>
+      </button>
+
       </div>
 
       <div className="max-h-[72vh] overflow-auto p-5">{children}</div>
