@@ -74,6 +74,20 @@ const toEmbedUrl = (value) => {
   return input;
 };
 
+const addOneMonth = (date) => {
+  const newDate = new Date(date);
+  newDate.setMonth(newDate.getMonth() + 1);
+  return newDate;
+};
+
+const formatDeadline = (dateString) => {
+  return new Date(dateString).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+};
+
 const createMapIcon = (L, background, size = 18) =>
   new L.DivIcon({
     className: 'custom-marker',
@@ -225,6 +239,51 @@ const INITIAL_DESKTOP_ITEMS = [
     },
     protected: false,
   },
+
+  {
+    id: 'random-dates',
+    label: 'Random Dates',
+    icon: '🎲',
+    x: 760,
+    y: 260,
+    windowX: 220,
+    windowY: 120,
+    windowTitle: 'Random Dates',
+    type: 'random-dates',
+    content: {
+      ideas: [
+        'Cooking date',
+        'Lego date',
+        'Bowling date',
+        'Netflix + fav snacks date',
+        'Spa date',
+        'Pottery date',
+        'Workshop date',
+        'City trip date',
+        'Road trip to a random place',
+        'Arcade date',
+        'Theme park date',
+        'Photography date',
+        'Bookstore + coffee date',
+        'Picnic date',
+        'Sunset viewpoint date',
+        'Dessert hopping date',
+        'Wine tasting date',
+        'Beer tasting date',
+        'Michelin star date',
+        'Board games cafe date',
+        'Custom t-shirt / tote bag date',
+        'Trivia night / pub quiz date',
+        'Movie marathon date',
+        'Dance date',
+        'Blindfold guessing date',
+      ],
+      lastResult: null,
+      history: [],
+    },
+    protected: false,
+  },
+
   {
     id: 'world-map',
     label: 'World Map.exe',
@@ -472,6 +531,11 @@ export default function TravelJournalSite() {
   const [mapLat, setMapLat] = useState('');
   const [mapLng, setMapLng] = useState('');
   const [mapCategory, setMapCategory] = useState('dream');
+
+  const [rouletteState, setRouletteState] = useState({
+  spinning: false,
+  rotation: 0,
+  });
 
   // Start with static data. Saved data is loaded later in an effect to avoid SSR/localStorage errors.
   const [desktopItems, setDesktopItems] = useState(INITIAL_DESKTOP_ITEMS);
@@ -1463,83 +1527,190 @@ export default function TravelJournalSite() {
       );
     }
 
-    if (item.type === 'creator') {
+    if (item.type === 'random-dates') {
+      const ideas = item.content.ideas ?? [];
+      const history = item.content.history ?? [];
+      const lastResult = item.content.lastResult;
+
+      const usedIdeas = new Set(history.map((entry) => entry.idea));
+      const availableIdeas = ideas.filter((idea) => !usedIdeas.has(idea));
+
+      const spinRoulette = () => {
+        if (rouletteState.spinning) return;
+        if (availableIdeas.length === 0) return;
+
+        const randomIndex = Math.floor(Math.random() * availableIdeas.length);
+        const selectedIdea = availableIdeas[randomIndex];
+
+        const newRotation =
+          rouletteState.rotation + 360 * 6 + Math.floor(Math.random() * 360);
+
+        setRouletteState({
+          spinning: true,
+          rotation: newRotation,
+        });
+
+        setTimeout(() => {
+          const selectedAt = new Date();
+          const deadline = addOneMonth(selectedAt);
+
+          const newResult = {
+            id: Date.now().toString(),
+            idea: selectedIdea,
+            selectedAt: selectedAt.toISOString(),
+            deadline: deadline.toISOString(),
+            completed: false,
+          };
+
+          updateItemContent(item.id, (prev) => ({
+            ...prev,
+            lastResult: newResult,
+            history: [...(prev.history ?? []), newResult],
+          }));
+
+          setRouletteState((prev) => ({
+            ...prev,
+            spinning: false,
+          }));
+        }, 2800);
+      };
+
       return (
         <div className="space-y-6 text-black">
-          <div className="space-y-3">
-            <p className="text-sm font-bold">Create a new desktop icon</p>
+          <div className="border-4 border-black bg-[#f9c2e3] p-4 shadow-[4px_4px_0_0_#000]">
+            <h3 className="text-lg font-bold">🎲 Random Date Roulette</h3>
+            <p className="mt-2 text-sm">
+              Spin the roulette. Whatever date comes out, you have one month to make it happen.
+              Once a date is selected, it is removed from the roulette.
+            </p>
+          </div>
 
-            <input
-              value={creatorName}
-              onChange={(event) => setCreatorName(event.target.value)}
-              placeholder="Icon name"
-              className="w-full border-2 border-black px-3 py-2 outline-none"
-            />
+          <div className="flex flex-col items-center gap-6 md:flex-row md:items-start">
+            <div className="relative flex h-72 w-72 items-center justify-center">
+              <div className="absolute -top-2 z-20 text-4xl">▼</div>
 
-            <select
-              value={creatorType}
-              onChange={(event) => setCreatorType(event.target.value)}
-              className="w-full border-2 border-black px-3 py-2 outline-none"
-            >
-              {TYPE_OPTIONS.map((type) => (
-                <option key={type}>{type}</option>
-              ))}
-            </select>
-
-            <div>
-              <p className="mb-2 text-sm">Choose an icon</p>
-              <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
-                {ICON_OPTIONS.map((iconOption) => (
-                  <button
-                    key={iconOption}
-                    onClick={() => setCreatorIcon(iconOption)}
-                    className={`border-2 border-black px-3 py-2 text-2xl shadow-[2px_2px_0_0_#000] ${
-                      creatorIcon === iconOption ? 'bg-[#fff6b3]' : 'bg-white'
-                    }`}
-                  >
-                    {iconOption}
-                  </button>
-                ))}
+              <div
+                className="flex h-64 w-64 items-center justify-center rounded-full border-4 border-black shadow-[6px_6px_0_0_#000] transition-transform duration-[2800ms] ease-out"
+                style={{
+                  transform: `rotate(${rouletteState.rotation}deg)`,
+                  background:
+                    'conic-gradient(#f9a8d4 0deg 30deg, #fde68a 30deg 60deg, #86efac 60deg 90deg, #bfdbfe 90deg 120deg, #fca5a5 120deg 150deg, #ddd6fe 150deg 180deg, #f9a8d4 180deg 210deg, #fde68a 210deg 240deg, #86efac 240deg 270deg, #bfdbfe 270deg 300deg, #fca5a5 300deg 330deg, #ddd6fe 330deg 360deg)',
+                }}
+              >
+                <div className="flex h-24 w-24 items-center justify-center rounded-full border-4 border-black bg-white text-center text-sm font-bold shadow-[3px_3px_0_0_#000]">
+                  DATE
+                </div>
               </div>
             </div>
 
-            <div className="border-2 border-black bg-white px-3 py-3">
-              <p className="text-xs uppercase">Selected icon</p>
-              <p className="mt-2 text-3xl">{creatorIcon}</p>
+            <div className="flex-1 space-y-4">
+              <button
+                onClick={spinRoulette}
+                disabled={rouletteState.spinning || availableIdeas.length === 0}
+                className="w-full border-4 border-black bg-[#fff6b3] px-6 py-4 text-lg font-bold shadow-[4px_4px_0_0_#000] hover:bg-white disabled:opacity-60"
+              >
+                {rouletteState.spinning
+                  ? 'Spinning...'
+                  : availableIdeas.length === 0
+                    ? 'All dates completed'
+                    : 'Spin Roulette'}
+              </button>
+
+              <div className="border-4 border-black bg-white p-4 text-sm shadow-[4px_4px_0_0_#000]">
+                <p className="font-bold">Dates remaining:</p>
+                <p className="mt-1 text-2xl font-bold">{availableIdeas.length}</p>
+              </div>
+
+              {lastResult && (
+                <div className="border-4 border-black bg-white p-4 shadow-[4px_4px_0_0_#000]">
+                  <p className="text-xs uppercase tracking-[0.2em]">Your latest date is</p>
+
+                  <h4 className="mt-3 text-2xl font-bold">{lastResult.idea}</h4>
+
+                  <div className="mt-4 border-2 border-black bg-[#c7f9cc] p-3 text-sm shadow-[2px_2px_0_0_#000]">
+                    <p className="font-bold">Deadline:</p>
+                    <p>{formatDeadline(lastResult.deadline)}</p>
+                  </div>
+
+                  <p className="mt-3 text-sm">
+                    You have one month to make this date happen. No excuses 💗
+                  </p>
+                </div>
+              )}
+
+              {!lastResult && (
+                <div className="border-4 border-black bg-white p-4 text-sm shadow-[4px_4px_0_0_#000]">
+                  No date has been selected yet. Spin the roulette to reveal one.
+                </div>
+              )}
             </div>
-
-            <button
-              onClick={addNewIcon}
-              className="border-2 border-black bg-[#d9d9d9] px-4 py-2 shadow-[2px_2px_0_0_#000] hover:bg-white"
-            >
-              Create Icon
-            </button>
           </div>
 
-          <div className="border-t-4 border-black pt-4">
-            <p className="mb-3 text-sm font-bold">Delete an icon</p>
+          {history.length > 0 && (
+            <div className="border-4 border-black bg-white p-4 shadow-[4px_4px_0_0_#000]">
+              <h4 className="font-bold">Selected Dates</h4>
 
-            <select
-              value={deleteTargetId}
-              onChange={(event) => setDeleteTargetId(event.target.value)}
-              className="w-full border-2 border-black bg-white px-3 py-2 outline-none"
-            >
-              <option value="">Select icon to delete</option>
-              {deletableItems.map((deletableItem) => (
-                <option key={deletableItem.id} value={deletableItem.id}>
-                  {deletableItem.label}
-                </option>
-              ))}
-            </select>
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full border-collapse text-sm">
+                  <thead>
+                    <tr className="bg-[#d9d9d9]">
+                      <th className="border-2 border-black px-3 py-2 text-left">Date idea</th>
+                      <th className="border-2 border-black px-3 py-2 text-left">Selected on</th>
+                      <th className="border-2 border-black px-3 py-2 text-left">Deadline</th>
+                      <th className="border-2 border-black px-3 py-2 text-left">Status</th>
+                    </tr>
+                  </thead>
 
-            <button
-              onClick={requestDeleteIcon}
-              disabled={!deleteTargetId}
-              className="mt-3 border-2 border-black bg-[#ffb3b3] px-4 py-2 shadow-[2px_2px_0_0_#000] disabled:opacity-50"
-            >
-              Delete Icon
-            </button>
-          </div>
+                  <tbody>
+                    {history.map((entry) => (
+                      <tr key={entry.id}>
+                        <td className="border-2 border-black px-3 py-2">
+                          {entry.idea}
+                        </td>
+
+                        <td className="border-2 border-black px-3 py-2">
+                          {formatDeadline(entry.selectedAt)}
+                        </td>
+
+                        <td className="border-2 border-black px-3 py-2">
+                          {formatDeadline(entry.deadline)}
+                        </td>
+
+                        <td className="border-2 border-black px-3 py-2">
+                          <button
+                            onClick={() =>
+                              updateItemContent(item.id, (prev) => ({
+                                ...prev,
+                                history: (prev.history ?? []).map((row) =>
+                                  row.id === entry.id
+                                    ? { ...row, completed: !row.completed }
+                                    : row
+                                ),
+                              }))
+                            }
+                            className={`border-2 border-black px-3 py-1 text-xs shadow-[2px_2px_0_0_#000] ${
+                              entry.completed ? 'bg-[#c7f9cc]' : 'bg-[#fff6b3]'
+                            }`}
+                          >
+                            {entry.completed ? 'Completed' : 'Pending'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {availableIdeas.length === 0 && (
+            <div className="border-4 border-black bg-[#c7f9cc] p-4 text-center shadow-[4px_4px_0_0_#000]">
+              <h4 className="text-xl font-bold">You completed all the dates 💗</h4>
+              <p className="mt-2 text-sm">
+                Time to create a new list of date ideas.
+              </p>
+            </div>
+          )}
         </div>
       );
     }
