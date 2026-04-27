@@ -535,7 +535,30 @@ export default function TravelJournalSite() {
   const [rouletteState, setRouletteState] = useState({
   spinning: false,
   rotation: 0,
-  });
+});
+
+const iconOptions = [
+  '📁',
+  '❤️',
+  '📸',
+  '🖼️',
+  '💌',
+  '⭐',
+  '🧳',
+  '🎞️',
+  '🧭',
+  '🌍',
+  '✈️',
+  '🌴',
+  '🗺️',
+  '🎵',
+  '📅',
+  '📖',
+  '🔒',
+  '📰',
+  '🎲',
+];
+const typeOptions = ['text', 'list', 'image', 'video-library'];
 
   // Start with static data. Saved data is loaded later in an effect to avoid SSR/localStorage errors.
   const [desktopItems, setDesktopItems] = useState(INITIAL_DESKTOP_ITEMS);
@@ -1172,15 +1195,6 @@ export default function TravelJournalSite() {
   </div>
 )}
 
-
-
-
-
-
-
-
-
-
         </div>
       );
     }
@@ -1259,6 +1273,91 @@ export default function TravelJournalSite() {
                 </label>
               ))}
             </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (item.type === 'creator') {
+      return (
+        <div className="space-y-6 text-black">
+          <div className="space-y-3">
+            <p className="text-sm font-bold">Create a new desktop icon</p>
+
+            <input
+              value={creatorName}
+              onChange={(e) => setCreatorName(e.target.value)}
+              placeholder="Icon name"
+              className="w-full border-2 border-black px-3 py-2 outline-none"
+            />
+
+            <select
+              value={creatorType}
+              onChange={(e) => setCreatorType(e.target.value)}
+              className="w-full border-2 border-black px-3 py-2 outline-none"
+            >
+              {typeOptions.map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
+            </select>
+
+            <div>
+              <p className="mb-2 text-sm">Choose an icon</p>
+
+              <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
+                {iconOptions.map((iconOption) => (
+                  <button
+                    key={iconOption}
+                    onClick={() => setCreatorIcon(iconOption)}
+                    className={`border-2 border-black px-3 py-2 text-2xl shadow-[2px_2px_0_0_#000] ${
+                      creatorIcon === iconOption ? 'bg-[#fff6b3]' : 'bg-white'
+                    }`}
+                  >
+                    {iconOption}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="border-2 border-black bg-white px-3 py-3">
+              <p className="text-xs uppercase">Selected icon</p>
+              <p className="mt-2 text-3xl">{creatorIcon}</p>
+            </div>
+
+            <button
+              onClick={addNewIcon}
+              className="border-2 border-black bg-[#d9d9d9] px-4 py-2 shadow-[2px_2px_0_0_#000] hover:bg-white"
+            >
+              Create Icon
+            </button>
+          </div>
+
+          <div className="border-t-4 border-black pt-4">
+            <p className="mb-3 text-sm font-bold">Delete an icon</p>
+
+            <select
+              value={deleteTargetId}
+              onChange={(e) => setDeleteTargetId(e.target.value)}
+              className="w-full border-2 border-black bg-white px-3 py-2 outline-none"
+            >
+              <option value="">Select icon to delete</option>
+
+              {deletableItems.map((deletableItem) => (
+                <option key={deletableItem.id} value={deletableItem.id}>
+                  {deletableItem.label}
+                </option>
+              ))}
+            </select>
+
+            <button
+              onClick={requestDeleteIcon}
+              disabled={!deleteTargetId}
+              className="mt-3 border-2 border-black bg-[#ffb3b3] px-4 py-2 shadow-[2px_2px_0_0_#000] disabled:opacity-50"
+            >
+              Delete Icon
+            </button>
           </div>
         </div>
       );
