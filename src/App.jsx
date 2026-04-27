@@ -337,76 +337,78 @@ const INITIAL_DESKTOP_ITEMS = [
   },
 ];
 
-const DraggableWindow = memo(function DraggableWindow({ item, onClose, children, onUpdatePosition }) {
-  const dragStateRef = useRef({
-    isDragging: false,
-    offsetX: 0,
-    offsetY: 0,
-    frameId: null,
-  });
+function DraggableWindow({ item, onClose, children, onUpdatePosition }) {
+  /*
+    Ventana arrastrable:
+    - windowRef apunta a la ventana.
+    - offsetRef guarda dónde has clicado dentro de la ventana.
+    - IMPORTANTÍSIMO:
+      como la ventana está dentro del desktop, hay que restar la posición
+      del contenedor padre. Si no, la ventana salta a la derecha.
+  */
+
+  const windowRef = useRef(null);
+  const draggingRef = useRef(false);
+  const offsetRef = useRef({ x: 0, y: 0 });
 
   useEffect(() => {
-    const onPointerMove = (event) => {
-      const dragState = dragStateRef.current;
-      if (!dragState.isDragging) return;
+    const onMouseMove = (e) => {
+      if (!draggingRef.current || !windowRef.current) return;
 
-      // requestAnimationFrame prevents excessive state updates while dragging.
-      if (dragState.frameId) cancelAnimationFrame(dragState.frameId);
+      const parent = windowRef.current.offsetParent;
+      const parentRect = parent
+        ? parent.getBoundingClientRect()
+        : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
 
-      dragState.frameId = requestAnimationFrame(() => {
-        onUpdatePosition(item.id, {
-          windowX: Math.max(20, event.clientX - dragState.offsetX),
-          windowY: Math.max(20, event.clientY - dragState.offsetY),
-        });
+      const newX = e.clientX - parentRect.left - offsetRef.current.x;
+      const newY = e.clientY - parentRect.top - offsetRef.current.y;
 
-        dragState.frameId = null;
+      onUpdatePosition(item.id, {
+        windowX: Math.max(20, Math.min(newX, parentRect.width - 220)),
+        windowY: Math.max(20, Math.min(newY, parentRect.height - 120)),
       });
     };
 
-    const stopDragging = () => {
-      const dragState = dragStateRef.current;
-      dragState.isDragging = false;
-
-      if (dragState.frameId) {
-        cancelAnimationFrame(dragState.frameId);
-        dragState.frameId = null;
-      }
+    const onMouseUp = () => {
+      draggingRef.current = false;
     };
 
-    window.addEventListener('pointermove', onPointerMove);
-    window.addEventListener('pointerup', stopDragging);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
 
     return () => {
-      window.removeEventListener('pointermove', onPointerMove);
-      window.removeEventListener('pointerup', stopDragging);
-      stopDragging();
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
     };
   }, [item.id, onUpdatePosition]);
 
-  const startDragging = useCallback((event) => {
-    if (event.button !== 0) return;
+  const startWindowDrag = (e) => {
+    e.preventDefault();
 
-    const windowElement = event.currentTarget.parentElement;
-    if (!windowElement) return;
+    if (!windowRef.current) return;
 
-    const rect = windowElement.getBoundingClientRect();
+    draggingRef.current = true;
 
-    dragStateRef.current = {
-      isDragging: true,
-      offsetX: event.clientX - rect.left,
-      offsetY: event.clientY - rect.top,
-      frameId: null,
+    const rect = windowRef.current.getBoundingClientRect();
+
+    offsetRef.current = {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
     };
-  }, []);
+  };
 
   return (
     <div
+      ref={windowRef}
       className="absolute z-40 w-full max-w-4xl border-4 border-black bg-[#efefef] shadow-[8px_8px_0_0_#000]"
-      style={{ left: item.windowX ?? 120, top: item.windowY ?? 80 }}
+      style={{
+        left: item.windowX ?? 120,
+        top: item.windowY ?? 80,
+      }}
     >
       <div
         className="flex cursor-move items-center justify-between border-b-4 border-black bg-[#000080] px-4 py-2 text-white"
-        onPointerDown={startDragging}
+        onMouseDown={startWindowDrag}
       >
         <div className="flex items-center gap-2">
           <span>{item.icon}</span>
@@ -414,6 +416,7 @@ const DraggableWindow = memo(function DraggableWindow({ item, onClose, children,
         </div>
 
         <button
+          onMouseDown={(e) => e.stopPropagation()}
           onClick={onClose}
           className="border-2 border-black bg-[#d9d9d9] px-2 py-0.5 text-xs text-black shadow-[2px_2px_0_0_#000]"
         >
@@ -424,7 +427,7 @@ const DraggableWindow = memo(function DraggableWindow({ item, onClose, children,
       <div className="max-h-[72vh] overflow-auto p-5">{children}</div>
     </div>
   );
-});
+}
 
 export default function TravelJournalSite() {
   const [countdown, setCountdown] = useState('');
